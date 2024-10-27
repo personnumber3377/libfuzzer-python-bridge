@@ -134,9 +134,8 @@ static void LLVMFuzzerInitPythonModule() {
       py_fatal_error();
     }
   } else {
-    fprintf(stderr, "Warning: No Python module specified, please set the "
-                    "LIBFUZZER_PYTHON_MODULE environment variable.\n");
-    py_fatal_error();
+    fprintf(stderr, "Warning: No Python module specified, using the default libfuzzer mutator (for now).\n");
+    // py_fatal_error();
   }
 
 
@@ -154,6 +153,10 @@ static void LLVMFuzzerFinalizePythonModule() {
 
 extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *Data, size_t Size,
                                           size_t MaxSize, unsigned int Seed) {
+  // First check if the custom python mutator is specified:
+  if (!py_module) { // No custom python mutator, so therefore just mutate regularly. (LLVMFuzzerMutate is the default mutator.)
+    return LLVMFuzzerMutate(Data, Size, MaxSize);
+  }
   PyObject* py_args = PyTuple_New(4);
 
   // Convert Data and Size to a ByteArray
@@ -206,7 +209,14 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *Data, size_t Size,
     }
     memcpy(Data, PyByteArray_AsString(py_value), ReturnedSize);
     Py_DECREF(py_value);
-    return ReturnedSize;
+    // return ReturnedSize; // Instead of returning the python custom mutator, we should also try to use the original custom mutator too (maybe).
+    if (getenv("FUZZ_ONLY_CUSTOM")) { // Only fuzz with the custom mutator
+      return ReturnedSize;
+    }
+
+
+    return LLVMFuzzerMutate(Data, ReturnedSize, MaxSize);
+
   } else {
     if (PyErr_Occurred())
       PyErr_Print();
